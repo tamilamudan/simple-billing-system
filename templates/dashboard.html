@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ app_settings.company_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Billing Dashboard</h1>
+    <p class="subtitle">Revenue summary, invoice aging, and accounting exports.</p>
+  </div>
+  <div class="btn-group">
+    <a class="btn" href="{{ url_for('export_invoices_csv', status=filters.status, currency=filters.currency, q=filters.q, date_from=filters.date_from, date_to=filters.date_to) }}">Export Invoices CSV</a>
+    <a class="btn" href="{{ url_for('export_ledger_csv') }}">Export Ledger CSV</a>
+    <a class="btn btn-primary" href="{{ url_for('new_invoice_page') }}">+ Create Invoice</a>
+  </div>
+</div>
+
+{% if summary.by_currency %}
+  {% for curr, metrics in summary.by_currency.items() %}
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Billed ({{ curr }})</div>
+        <div class="kpi-value">{{ metrics.billed_cents | money(curr) }}</div>
+        <div class="kpi-sub">Issued invoices (excl. draft &amp; void)</div>
+      </div>
+      <div class="kpi-card kpi-success">
+        <div class="kpi-label">Collected ({{ curr }})</div>
+        <div class="kpi-value">{{ metrics.collected_cents | money(curr) }}</div>
+        <div class="kpi-sub">Net payments received</div>
+      </div>
+      <div class="kpi-card kpi-danger">
+        <div class="kpi-label">Outstanding / Overdue ({{ curr }})</div>
+        <div class="kpi-value">{{ metrics.outstanding_cents | money(curr) }}</div>
+        <div class="kpi-sub">Overdue: {{ metrics.overdue_cents | money(curr) }}</div>
+      </div>
+      {% if app_settings.recurring_enabled %}
+      <div class="kpi-card">
+        <div class="kpi-label">Monthly Recurring Revenue ({{ curr }})</div>
+        <div class="kpi-value">{{ metrics.mrr_cents | money(curr) }}</div>
+        <div class="kpi-sub">{{ summary.active_subscription_count }} active/past-due subscriptions</div>
+      </div>
+      {% else %}
+      <div class="kpi-card">
+        <div class="kpi-label">Catalog &amp; Customers</div>
+        <div class="kpi-value">{{ summary.customer_count }} / {{ summary.item_count }}</div>
+        <div class="kpi-sub">Active customers / billable items</div>
+      </div>
+      {% endif %}
+    </div>
+  {% endfor %}
+{% else %}
+  <div class="card"><p class="muted">No billing activity yet. Create your first invoice to see revenue metrics.</p></div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Invoices</h2>
+    <div class="muted">
+      Draft: {{ summary.status_counts.draft }} &middot;
+      Sent: {{ summary.status_counts.sent }} &middot;
+      Paid: {{ summary.status_counts.paid }} &middot;
+      Overdue: {{ summary.status_counts.overdue }} &middot;
+      Void: {{ summary.status_counts.void }} &middot;
+      Refunded: {{ summary.status_counts.refunded }}
+    </div>
+  </div>
+
+  <form method="get" action="{{ url_for('dashboard') }}" class="filter-bar">
+    <div class="form-group">
+      <label for="f-q">Search</label>
+      <input id="f-q" type="text" name="q" value="{{ filters.q }}" placeholder="Invoice # or customer">
+    </div>
+    <div class="form-group">
+      <label for="f-status">Status</label>
+      <select id="f-status" name="status">
+        <option value="">All Statuses</option>
+        {% for s in invoice_statuses %}
+          <option value="{{ s }}" {{ 'selected' if filters.status == s else '' }}>{{ s | title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="f-curr">Currency</label>
+      <select id="f-curr" name="currency">
+        <option value="">All Currencies</option>
+        {% for c in summary.currencies %}
+          <option value="{{ c }}" {{ 'selected' if filters.currency == c else '' }}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="f-from">Issue From</label>
+      <input id="f-from" type="date" name="date_from" value="{{ filters.date_from }}">
+    </div>
+    <div class="form-group">
+      <label for="f-to">Issue To</label>
+      <input id="f-to" type="date" name="date_to" value="{{ filters.date_to }}">
+    </div>
+    <div class="btn-group">
+      <button type="submit" class="btn btn-primary">Filter</button>
+      <a href="{{ url_for('dashboard') }}" class="btn">Reset</a>
+    </div>
+  </form>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Invoice #</th>
+          <th>Customer</th>
+          <th>Status</th>
+          <th>Issue Date</th>
+          <th>Due Date</th>
+          <th class="num">Total</th>
+          <th class="num">Paid</th>
+          <th class="num">Balance</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invoices %}
+        <tr>
+          <td class="mono"><a href="{{ url_for('invoice_detail_page', invoice_id=inv.id) }}">{{ inv.invoice_number }}</a></td>
+          <td>{{ inv.customer_name }}</td>
+          <td><span class="badge badge-{{ inv.status }}">{{ inv.status }}</span></td>
+          <td>{{ inv.issue_date }}</td>
+          <td>{{ inv.due_date }}</td>
+          <td class="num">{{ inv.total_cents | money(inv.currency) }}</td>
+          <td class="num">{{ inv.paid_cents | money(inv.currency) }}</td>
+          <td class="num"><strong>{{ inv.balance_cents | money(inv.currency) }}</strong></td>
+          <td>
+            <div class="btn-group">
+              <a class="btn btn-sm" href="{{ url_for('invoice_detail_page', invoice_id=inv.id) }}">View</a>
+              <a class="btn btn-sm" href="{{ url_for('download_invoice_pdf', invoice_id=inv.id) }}">PDF</a>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="muted">No invoices match your filter criteria.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

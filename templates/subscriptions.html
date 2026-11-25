@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Recurring Billing &amp; Dunning — {{ app_settings.company_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Recurring Billing &amp; Dunning</h1>
+    <p class="subtitle">Subscriptions, mid-cycle upgrade/downgrade proration, and payment retry/reminder states.</p>
+  </div>
+  <form method="post" action="{{ url_for('toggle_recurring_form') }}">
+    <input type="hidden" name="next" value="{{ url_for('subscriptions_page') }}">
+    <button type="submit" class="btn">
+      {{ 'Disable Recurring Module' if settings.recurring_enabled else 'Enable Recurring Module' }}
+    </button>
+  </form>
+</div>
+
+{% if not settings.recurring_enabled %}
+  <div class="card">
+    <h2 class="card-title">Recurring Billing &amp; Dunning is Currently Disabled</h2>
+    <p class="muted">This optional module is turned off in Settings. Enable it above or in Settings to manage subscriptions, proration, and dunning retries.</p>
+  </div>
+{% else %}
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Start New Subscription</h2>
+  </div>
+  {% if customers and recurring_items %}
+  <form method="post" action="{{ url_for('create_subscription_form') }}">
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="s-cust">Customer *</label>
+        <select id="s-cust" name="customer_id" required>
+          {% for c in customers %}
+            <option value="{{ c.id }}">{{ c.name }} ({{ c.currency }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="s-plan">Recurring Plan *</label>
+        <select id="s-plan" name="item_id" required>
+          {% for item in recurring_items %}
+            <option value="{{ item.id }}">{{ item.name }} — {{ item.unit_price_cents | money(item.currency) }} / {{ item.billing_interval }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="s-int">Billing Interval</label>
+        <select id="s-int" name="interval">
+          {% for iv in billing_intervals %}
+            <option value="{{ iv }}">{{ iv | title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="s-qty">Quantity</label>
+        <input id="s-qty" type="text" name="quantity" value="1" required>
+      </div>
+      <div class="form-group">
+        <label for="s-start">Start Date</label>
+        <input id="s-start" type="date" name="start_date">
+      </div>
+      <div class="form-group" style="justify-content: flex-end;">
+        <button type="submit" class="btn btn-primary">Start Subscription</button>
+      </div>
+    </div>
+  </form>
+  {% else %}
+    <p class="muted">Ensure you have at least one active customer and one recurring catalog item.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Subscriptions &amp; Dunning Queue</h2>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer / Plan</th>
+          <th>Status</th>
+          <th>Period &amp; Next Billing</th>
+          <th>Dunning State</th>
+          <th>Proration / Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sub in subscriptions %}
+        <tr>
+          <td>
+            <strong>{{ sub.customer_name }}</strong>
+            <div>{{ sub.item_name }} &times; {{ sub.quantity }} ({{ sub.unit_price_cents | money(sub.currency) }} / {{ sub.interval }})</div>
+            {% if sub.last_invoice_id %}
+              <div class="muted"><a href="{{ url_for('invoice_detail_page', invoice_id=sub.last_invoice_id) }}">View Latest Invoice</a></div>
+            {% endif %}
+          </td>
+          <td><span class="badge badge-{{ sub.status }}">{{ sub.status | replace('_', ' ') }}</span></td>
+          <td>
+            <div>{{ sub.current_period_start }} &rarr; {{ sub.current_period_end }}</div>
+            <div class="muted">Next bill: {{ sub.next_billing_date }}</div>
+          </td>
+          <td>
+            <span class="badge badge-{{ sub.dunning_state }}">{{ sub.dunning_state | replace('_', ' ') }}</span>
+            {% if sub.next_retry_date %}<div class="muted">Next retry: {{ sub.next_retry_date }}</div>{% endif %}
+            {% if sub.last_error %}<div class="muted">{{ sub.last_error }}</div>{% endif %}
+          </td>
+          <td>
+            {% if sub.status != 'canceled' %}
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <form method="post" action="{{ url_for('change_plan_form', sub_id=sub.id) }}" class="inline-form">
+                <select name="new_item_id" style="width: 180px;">
+                  {% for item in recurring_items %}
+                    <option value="{{ item.id }}" {{ 'selected' if item.id == sub.item_id else '' }}>
+                      {{ item.name }} ({{ item.unit_price_cents | money(item.currency) }})
+                    </option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm">Prorate Plan</button>
+              </form>
+
+              <div class="btn-group">
+                <form method="post" action="{{ url_for('renew_subscription_form', sub_id=sub.id) }}" class="inline-form">
+                  <button type="submit" class="btn btn-sm btn-primary">Bill Renewal</button>
+                </form>
+                <form method="post" action="{{ url_for('renew_subscription_form', sub_id=sub.id) }}" class="inline-form">
+                  <input type="hidden" name="simulate_failure" value="1">
+                  <button type="submit" class="btn btn-sm">Simulate Failed Charge</button>
+                </form>
+                {% if sub.dunning_state != 'ok' %}
+                  <form method="post" action="{{ url_for('retry_dunning_form', sub_id=sub.id) }}" class="inline-form">
+                    <input type="hidden" name="simulate_success" value="1">
+                    <button type="submit" class="btn btn-sm btn-primary">Retry (Succeed)</button>
+                  </form>
+                  <form method="post" action="{{ url_for('retry_dunning_form', sub_id=sub.id) }}" class="inline-form">
+                    <input type="hidden" name="simulate_success" value="0">
+                    <button type="submit" class="btn btn-sm">Retry (Fail)</button>
+                  </form>
+                  <form method="post" action="{{ url_for('remind_dunning_form', sub_id=sub.id) }}" class="inline-form">
+                    <button type="submit" class="btn btn-sm">Send Reminder</button>
+                  </form>
+                {% endif %}
+                <form method="post" action="{{ url_for('cancel_subscription_form', sub_id=sub.id) }}" class="inline-form">
+                  <button type="submit" class="btn btn-sm btn-danger">Cancel</button>
+                </form>
+              </div>
+
+              {% if sub.events %}
+                <div class="muted" style="font-size: 12px;">
+                  Latest: {{ sub.events[-1].date }} — {{ sub.events[-1].note }}
+                </div>
+              {% endif %}
+            </div>
+            {% else %}
+              <span class="muted">Canceled</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="muted">No subscriptions created yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

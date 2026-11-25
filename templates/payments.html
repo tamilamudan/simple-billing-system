@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Payments &amp; Ledger — {{ app_settings.company_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Payments &amp; Immutable Ledger</h1>
+    <p class="subtitle">Record full or partial payments across methods and audit the append-only transaction log.</p>
+  </div>
+  <a class="btn" href="{{ url_for('export_ledger_csv') }}">Export Ledger CSV</a>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Record Payment</h2>
+  </div>
+  {% if open_invoices %}
+  <form method="post" action="{{ url_for('record_payment_form') }}">
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="p-inv">Open Invoice *</label>
+        <select id="p-inv" name="invoice_id" required>
+          {% for inv in open_invoices %}
+            <option value="{{ inv.id }}" data-balance="{{ inv.balance_cents | cents_input }}">
+              {{ inv.invoice_number }} — {{ inv.customer_name }} (Due: {{ inv.balance_cents | money(inv.currency) }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="p-amt">Payment Amount (Full or Partial) *</label>
+        <input id="p-amt" type="text" name="amount" required value="{{ open_invoices[0].balance_cents | cents_input }}">
+      </div>
+      <div class="form-group">
+        <label for="p-method">Payment Method</label>
+        <select id="p-method" name="method">
+          {% for m in payment_methods %}
+            <option value="{{ m }}">{{ m | replace('_', ' ') | title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="p-date">Payment Date</label>
+        <input id="p-date" type="date" name="paid_at">
+      </div>
+      <div class="form-group">
+        <label for="p-ref">Reference / Transaction ID</label>
+        <input id="p-ref" type="text" name="reference" placeholder="UTR / Stripe ID / Check #">
+      </div>
+      <div class="form-group" style="justify-content: center;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" name="simulate_failure" value="1">
+          <span>Simulate Failed Charge</span>
+        </label>
+      </div>
+    </div>
+    <div style="margin-top: 14px;">
+      <button type="submit" class="btn btn-primary">Record Payment</button>
+    </div>
+  </form>
+  <script>
+    (function () {
+      const sel = document.getElementById('p-inv');
+      const amt = document.getElementById('p-amt');
+      if (sel && amt) {
+        sel.addEventListener('change', () => {
+          const opt = sel.options[sel.selectedIndex];
+          if (opt && opt.dataset.balance) amt.value = opt.dataset.balance;
+        });
+      }
+    })();
+  </script>
+  {% else %}
+    <p class="muted">No open Sent or Overdue invoices currently have a balance due.</p>
+  {% endif %}
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h2 class="card-title" style="margin-bottom: 12px;">Payment History</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Invoice</th>
+            <th>Customer</th>
+            <th>Method</th>
+            <th>Status</th>
+            <th class="num">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in payments %}
+          <tr>
+            <td>{{ p.paid_at }}</td>
+            <td class="mono"><a href="{{ url_for('invoice_detail_page', invoice_id=p.invoice_id) }}">{{ p.invoice_number }}</a></td>
+            <td>{{ p.customer_name }}</td>
+            <td>{{ p.method | replace('_', ' ') | title }}</td>
+            <td><span class="badge badge-{{ p.status }}">{{ p.status }}</span></td>
+            <td class="num">{{ p.amount_cents | money(p.currency) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="muted">No payments recorded yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Immutable Transaction Ledger</h2>
+      <span class="muted">Append-only</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Customer / Invoice</th>
+            <th>Note</th>
+            <th class="num">Amount</th>
+            <th class="num">Bal After</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in ledger %}
+          <tr>
+            <td>{{ entry.entry_date }}</td>
+            <td><span class="badge badge-{{ entry.direction }}">{{ entry.entry_type | replace('_', ' ') }}</span></td>
+            <td>
+              <div>{{ entry.customer_name }}</div>
+              {% if entry.invoice_number %}<div class="mono muted">{{ entry.invoice_number }}</div>{% endif %}
+            </td>
+            <td>{{ entry.note }}</td>
+            <td class="num">{{ entry.amount_cents | money(entry.currency) }}</td>
+            <td class="num">{{ entry.balance_after_cents | money(entry.currency) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="muted">Ledger is empty.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

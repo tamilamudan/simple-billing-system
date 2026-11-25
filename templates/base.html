@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Simple Billing{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="{{ url_for('dashboard') }}">
+        <span class="brand-mark">$</span>
+        <span>{{ app_settings.company_name }}</span>
+      </a>
+      <nav class="nav">
+        <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' else '' }}">Dashboard</a>
+        <a href="{{ url_for('invoices_page') }}" class="{{ 'active' if request.endpoint in ('invoices_page', 'new_invoice_page', 'edit_invoice_page', 'invoice_detail_page') else '' }}">Invoices</a>
+        <a href="{{ url_for('customers_page') }}" class="{{ 'active' if request.endpoint == 'customers_page' else '' }}">Customers</a>
+        <a href="{{ url_for('catalog_page') }}" class="{{ 'active' if request.endpoint == 'catalog_page' else '' }}">Catalog</a>
+        <a href="{{ url_for('payments_page') }}" class="{{ 'active' if request.endpoint == 'payments_page' else '' }}">Payments &amp; Ledger</a>
+        {% if app_settings.recurring_enabled %}
+          <a href="{{ url_for('subscriptions_page') }}" class="{{ 'active' if request.endpoint == 'subscriptions_page' else '' }}">Recurring</a>
+        {% endif %}
+        <a href="{{ url_for('settings_page') }}" class="{{ 'active' if request.endpoint == 'settings_page' else '' }}">Settings</a>
+      </nav>
+      <div class="topbar-actions">
+        <form method="post" action="{{ url_for('toggle_recurring_form') }}" class="inline-form">
+          <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+          <button type="submit" class="btn btn-sm" title="Toggle optional Recurring &amp; Dunning module">
+            Recurring: {{ 'ON' if app_settings.recurring_enabled else 'OFF' }}
+          </button>
+        </form>
+        <a href="{{ url_for('new_invoice_page') }}" class="btn btn-primary btn-sm">+ New Invoice</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-list">
+          {% for category, message in messages %}
+            <div class="flash flash-{{ 'error' if category == 'error' else 'success' }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

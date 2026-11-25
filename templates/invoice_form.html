@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Draft ' + invoice.invoice_number if invoice else 'New Invoice' }} — {{ app_settings.company_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ 'Edit Draft ' + invoice.invoice_number if invoice else 'Create Invoice' }}</h1>
+    <p class="subtitle">Totals, discounts (applied before tax), and taxes are computed server-side using exact cent arithmetic.</p>
+  </div>
+  <a href="{{ url_for('invoice_detail_page', invoice_id=invoice.id) if invoice else url_for('invoices_page') }}" class="btn">Back</a>
+</div>
+
+<form method="post" action="{{ url_for('update_invoice_form', invoice_id=invoice.id) if invoice else url_for('create_invoice_form') }}" class="card">
+  <div class="form-grid">
+    <div class="form-group">
+      <label for="inv-cust">Customer *</label>
+      <select id="inv-cust" name="customer_id" required>
+        <option value="">Select customer...</option>
+        {% for c in customers %}
+          <option value="{{ c.id }}" data-terms="{{ c.payment_terms_days }}" {{ 'selected' if invoice and invoice.customer_id == c.id else '' }}>
+            {{ c.name }} ({{ c.currency }}, Net {{ c.payment_terms_days }}d)
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="inv-issue">Issue Date *</label>
+      <input id="inv-issue" type="date" name="issue_date" required value="{{ invoice.issue_date if invoice else '' }}">
+    </div>
+    <div class="form-group">
+      <label for="inv-due">Due Date</label>
+      <input id="inv-due" type="date" name="due_date" value="{{ invoice.due_date if invoice else '' }}">
+    </div>
+    <div class="form-group">
+      <label for="inv-disc-type">Discount Type</label>
+      {% set dt = invoice.discount_type if invoice else 'none' %}
+      <select id="inv-disc-type" name="discount_type">
+        <option value="none" {{ 'selected' if dt == 'none' else '' }}>None</option>
+        <option value="percentage" {{ 'selected' if dt == 'percentage' else '' }}>Percentage (%)</option>
+        <option value="fixed" {{ 'selected' if dt == 'fixed' else '' }}>Fixed Amount</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="inv-disc-val">Discount Value (% or Amount)</label>
+      {% if invoice and invoice.discount_type == 'percentage' %}
+        {% set dv = invoice.discount_value | bps_input %}
+      {% elif invoice and invoice.discount_type == 'fixed' %}
+        {% set dv = invoice.discount_value | cents_input %}
+      {% else %}
+        {% set dv = '0' %}
+      {% endif %}
+      <input id="inv-disc-val" type="text" name="discount_value" value="{{ dv }}" placeholder="0">
+    </div>
+  </div>
+
+  <div style="margin-top: 20px;">
+    <div class="card-header">
+      <h2 class="card-title">Line Items</h2>
+      <button type="button" id="add-line-btn" class="btn btn-sm">+ Add Line Item</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="min-width: 170px;">Catalog Item (Optional)</th>
+            <th style="min-width: 220px;">Description *</th>
+            <th style="width: 90px;">Qty *</th>
+            <th style="width: 120px;">Unit Price *</th>
+            <th style="width: 90px;">Tax %</th>
+            <th style="width: 80px;"></th>
+          </tr>
+        </thead>
+        <tbody id="lines-body">
+          {% set existing_lines = invoice.lines if invoice else [None] %}
+          {% for ln in existing_lines %}
+          <tr class="line-row">
+            <td>
+              <select name="line_item_id" class="catalog-select">
+                <option value="">Custom item...</option>
+                {% for it in items %}
+                  <option value="{{ it.id }}"
+                          data-desc="{{ it.name }}"
+                          data-price="{{ it.unit_price_cents | cents_input }}"
+                          data-tax="{{ it.tax_rate_bps | bps_input }}"
+                          {{ 'selected' if ln and ln.item_id == it.id else '' }}>
+                    {{ it.name }} ({{ it.unit_price_cents | money(it.currency) }})
+                  </option>
+                {% endfor %}
+              </select>
+            </td>
+            <td><input type="text" name="line_description" required value="{{ ln.description if ln else '' }}" placeholder="Service or product description"></td>
+            <td><input type="text" name="line_quantity" required value="{{ ln.quantity if ln else '1' }}"></td>
+            <td><input type="text" name="line_unit_price" required value="{{ ln.unit_price_cents | cents_input if ln else '' }}" placeholder="100.00"></td>
+            <td><input type="text" name="line_tax_rate" value="{{ ln.tax_rate_bps | bps_input if ln else '0' }}" placeholder="0"></td>
+            <td><button type="button" class="btn btn-sm remove-line-btn">Remove</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="form-group full" style="margin-top: 16px;">
+    <label for="inv-notes">Invoice Notes</label>
+    <textarea id="inv-notes" name="notes" rows="2" placeholder="Payment instructions or thank-you note">{{ invoice.notes if invoice else '' }}</textarea>
+  </div>
+
+  <div class="btn-group" style="margin-top: 18px;">
+    <button type="submit" name="action" value="draft" class="btn">Save as Draft</button>
+    <button type="submit" name="action" value="send" class="btn btn-primary">{{ 'Update & Send Invoice' if invoice else 'Create & Send Invoice' }}</button>
+  </div>
+</form>
+
+<script>
+(function () {
+  const issueInput = document.getElementById('inv-issue');
+  const dueInput = document.getElementById('inv-due');
+  const custSelect = document.getElementById('inv-cust');
+  if (issueInput && !issueInput.value) {
+    issueInput.value = new Date().toISOString().slice(0, 10);
+  }
+  function updateDueFromTerms() {
+    if (!custSelect || !issueInput || !dueInput || dueInput.dataset.manual === '1') return;
+    const opt = custSelect.options[custSelect.selectedIndex];
+    const terms = parseInt(opt && opt.dataset.terms ? opt.dataset.terms : '15', 10);
+    if (!issueInput.value || isNaN(terms)) return;
+    const d = new Date(issueInput.value + 'T00:00:00');
+    d.setDate(d.getDate() + terms);
+    dueInput.value = d.toISOString().slice(0, 10);
+  }
+  if (dueInput && dueInput.value) dueInput.dataset.manual = '1';
+  if (dueInput) dueInput.addEventListener('change', () => { dueInput.dataset.manual = '1'; });
+  if (custSelect) custSelect.addEventListener('change', updateDueFromTerms);
+  if (issueInput) issueInput.addEventListener('change', updateDueFromTerms);
+
+  const body = document.getElementById('lines-body');
+  const addBtn = document.getElementById('add-line-btn');
+
+  function wireRow(row) {
+    const sel = row.querySelector('.catalog-select');
+    const desc = row.querySelector('input[name="line_description"]');
+    const price = row.querySelector('input[name="line_unit_price"]');
+    const tax = row.querySelector('input[name="line_tax_rate"]');
+    const rm = row.querySelector('.remove-line-btn');
+    if (sel) {
+      sel.addEventListener('change', () => {
+        const opt = sel.options[sel.selectedIndex];
+        if (opt && opt.value) {
+          desc.value = opt.dataset.desc || '';
+          price.value = opt.dataset.price || '';
+          tax.value = opt.dataset.tax || '0';
+        }
+      });
+    }
+    if (rm) {
+      rm.addEventListener('click', () => {
+        if (body.querySelectorAll('.line-row').length > 1) {
+          row.remove();
+        }
+      });
+    }
+  }
+
+  body.querySelectorAll('.line-row').forEach(wireRow);
+  addBtn.addEventListener('click', () => {
+    const first = body.querySelector('.line-row');
+    const clone = first.cloneNode(true);
+    clone.querySelector('.catalog-select').selectedIndex = 0;
+    clone.querySelector('input[name="line_description"]').value = '';
+    clone.querySelector('input[name="line_quantity"]').value = '1';
+    clone.querySelector('input[name="line_unit_price"]').value = '';
+    clone.querySelector('input[name="line_tax_rate"]').value = '0';
+    body.appendChild(clone);
+    wireRow(clone);
+  });
+})();
+</script>
+{% endblock %}

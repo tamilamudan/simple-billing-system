@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Customers — {{ app_settings.company_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Customers</h1>
+    <p class="subtitle">Manage billing addresses, tax IDs/GSTIN, currencies, and payment terms.</p>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">{{ 'Edit Customer' if edit_customer else 'Add Customer' }}</h2>
+      {% if edit_customer %}
+        <a href="{{ url_for('customers_page') }}" class="btn btn-sm">Cancel Edit</a>
+      {% endif %}
+    </div>
+    <form method="post" action="{{ url_for('edit_customer_form', customer_id=edit_customer.id) if edit_customer else url_for('create_customer_form') }}">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="c-name">Customer / Company Name *</label>
+          <input id="c-name" type="text" name="name" required value="{{ edit_customer.name if edit_customer else '' }}" placeholder="Acme Retail Labs">
+        </div>
+        <div class="form-group">
+          <label for="c-email">Billing Email *</label>
+          <input id="c-email" type="email" name="email" required value="{{ edit_customer.email if edit_customer else '' }}" placeholder="ap@acme.example">
+        </div>
+        <div class="form-group">
+          <label for="c-phone">Phone</label>
+          <input id="c-phone" type="text" name="phone" value="{{ edit_customer.phone if edit_customer else '' }}" placeholder="+1-415-555-0192">
+        </div>
+        <div class="form-group">
+          <label for="c-tax">Tax ID / GSTIN / VAT</label>
+          <input id="c-tax" type="text" name="tax_id" value="{{ edit_customer.tax_id if edit_customer else '' }}" placeholder="29AAACZ1234F1Z5">
+        </div>
+        <div class="form-group">
+          <label for="c-curr">Currency</label>
+          <select id="c-curr" name="currency">
+            {% set sel_curr = edit_customer.currency if edit_customer else 'USD' %}
+            {% for c in supported_currencies %}
+              <option value="{{ c }}" {{ 'selected' if sel_curr == c else '' }}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="c-terms">Payment Terms (Days)</label>
+          <input id="c-terms" type="number" name="payment_terms_days" min="0" max="365" value="{{ edit_customer.payment_terms_days if edit_customer else 15 }}">
+        </div>
+        <div class="form-group full">
+          <label for="c-addr">Billing Address</label>
+          <textarea id="c-addr" name="billing_address" rows="2" placeholder="Street, City, State, Postal Code, Country">{{ edit_customer.billing_address if edit_customer else '' }}</textarea>
+        </div>
+      </div>
+      <div style="margin-top: 14px;">
+        <button type="submit" class="btn btn-primary">{{ 'Update Customer' if edit_customer else 'Create Customer' }}</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Customer Directory</h2>
+      <a href="{{ url_for('customers_page', q=search, archived='0' if show_archived else '1') }}" class="btn btn-sm">
+        {{ 'Hide Archived' if show_archived else 'Show Archived' }}
+      </a>
+    </div>
+
+    <form method="get" action="{{ url_for('customers_page') }}" class="filter-bar">
+      {% if show_archived %}<input type="hidden" name="archived" value="1">{% endif %}
+      <div class="form-group">
+        <input type="text" name="q" value="{{ search }}" placeholder="Search name, email, tax ID, address...">
+      </div>
+      <button type="submit" class="btn">Search</button>
+      {% if search %}<a href="{{ url_for('customers_page') }}" class="btn">Clear</a>{% endif %}
+    </form>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th>Tax ID</th>
+            <th>Currency</th>
+            <th>Terms</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in customers %}
+          <tr>
+            <td>
+              <strong>{{ c.name }}</strong>
+              {% if c.archived %}<span class="badge badge-void">Archived</span>{% endif %}
+              <div class="muted">{{ c.email }}</div>
+              {% if c.billing_address %}<div class="muted">{{ c.billing_address }}</div>{% endif %}
+            </td>
+            <td class="mono">{{ c.tax_id or '—' }}</td>
+            <td>{{ c.currency }}</td>
+            <td>Net {{ c.payment_terms_days }}d</td>
+            <td>
+              <div class="btn-group">
+                <a class="btn btn-sm" href="{{ url_for('customers_page', edit=c.id, q=search, archived='1' if show_archived else '') }}">Edit</a>
+                <form method="post" action="{{ url_for('toggle_customer_archive_form', customer_id=c.id) }}" class="inline-form">
+                  <input type="hidden" name="archived" value="{{ '0' if c.archived else '1' }}">
+                  <button type="submit" class="btn btn-sm">{{ 'Restore' if c.archived else 'Archive' }}</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="muted">No customers found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

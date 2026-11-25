@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Invoices — {{ app_settings.company_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Invoices</h1>
+    <p class="subtitle">Create drafts, issue invoices, track overdue balances, and download PDFs.</p>
+  </div>
+  <div class="btn-group">
+    <a class="btn" href="{{ url_for('export_invoices_csv', status=filters.status, currency=filters.currency, q=filters.q) }}">Export CSV</a>
+    <a class="btn btn-primary" href="{{ url_for('new_invoice_page') }}">+ New Invoice</a>
+  </div>
+</div>
+
+<div class="card">
+  <form method="get" action="{{ url_for('invoices_page') }}" class="filter-bar">
+    <div class="form-group">
+      <label for="i-q">Search</label>
+      <input id="i-q" type="text" name="q" value="{{ filters.q }}" placeholder="Invoice # or customer">
+    </div>
+    <div class="form-group">
+      <label for="i-status">Status</label>
+      <select id="i-status" name="status">
+        <option value="">All Statuses</option>
+        {% for s in invoice_statuses %}
+          <option value="{{ s }}" {{ 'selected' if filters.status == s else '' }}>{{ s | title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="i-curr">Currency</label>
+      <select id="i-curr" name="currency">
+        <option value="">All</option>
+        {% for c in supported_currencies %}
+          <option value="{{ c }}" {{ 'selected' if filters.currency == c else '' }}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Filter</button>
+    <a href="{{ url_for('invoices_page') }}" class="btn">Reset</a>
+  </form>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Invoice #</th>
+          <th>Customer</th>
+          <th>Status</th>
+          <th>Issue Date</th>
+          <th>Due Date</th>
+          <th class="num">Total</th>
+          <th class="num">Balance</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invoices %}
+        <tr>
+          <td class="mono"><a href="{{ url_for('invoice_detail_page', invoice_id=inv.id) }}">{{ inv.invoice_number }}</a></td>
+          <td>{{ inv.customer_name }}</td>
+          <td><span class="badge badge-{{ inv.status }}">{{ inv.status }}</span></td>
+          <td>{{ inv.issue_date }}</td>
+          <td>{{ inv.due_date }}</td>
+          <td class="num">{{ inv.total_cents | money(inv.currency) }}</td>
+          <td class="num"><strong>{{ inv.balance_cents | money(inv.currency) }}</strong></td>
+          <td>
+            <div class="btn-group">
+              <a class="btn btn-sm" href="{{ url_for('invoice_detail_page', invoice_id=inv.id) }}">Open</a>
+              {% if inv.status == 'draft' %}
+                <a class="btn btn-sm" href="{{ url_for('edit_invoice_page', invoice_id=inv.id) }}">Edit</a>
+              {% endif %}
+              <a class="btn btn-sm" href="{{ url_for('download_invoice_pdf', invoice_id=inv.id) }}">PDF</a>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="muted">No invoices found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
