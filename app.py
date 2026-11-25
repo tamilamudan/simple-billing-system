@@ -1,5 +1,3 @@
-"""Flask application providing both clean HTML/CSS UI and structured REST API."""
-
 from __future__ import annotations
 
 import csv
@@ -109,9 +107,6 @@ def create_app(data_path: str | Path | None = None, *, auto_seed: bool = True) -
             )
         return lines
 
-    # ==================================================================
-    # HTML Routes
-    # ==================================================================
     @app.get("/")
     def dashboard() -> str:
         currency = request.args.get("currency", "").strip().upper()
